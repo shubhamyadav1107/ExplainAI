@@ -3,7 +3,7 @@ torch==2.2.0
 transformers==4.34.0
 diffusers==0.15.1
 accelerate==0.21.0
-Pillow==9.5.0
+Pillow==9.4.0  # Use a pre-compiled version that should be available in the cloud
 python-pptx==0.6.21
 python-docx==0.8.11
 PyPDF2==3.0.1
