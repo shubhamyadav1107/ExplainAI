@@ -1,27 +1,44 @@
 import os
+import re
 import streamlit as st
+from transformers import pipeline
+from diffusers import DiffusionPipeline
+from PIL import Image
 from PyPDF2 import PdfReader
 from docx import Document
 from pptx import Presentation
-from transformers import pipeline
-from diffusers import StableDiffusionPipeline
-from PIL import Image
 
-# Helper functions for text extraction
-def extract_text_from_pdf(file_path):
-    with open(file_path, "rb") as file:
-        reader = PdfReader(file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() if page.extract_text() else ""
+# Title of the app
+st.title(" ExplainAI: Transforming ")
+
+# Sidebar instructions
+st.sidebar.header("Upload Files")
+st.sidebar.write("Upload a PDF, Word, or PPT file to generate visual insights.")
+
+# File upload section
+uploaded_file = st.file_uploader("Upload a file", type=["pdf", "docx", "pptx"])
+if uploaded_file is not None:
+    file_extension = uploaded_file.name.split(".")[-1]
+
+# Function to extract text from PDF
+def extract_text_from_pdf(file):
+    reader = PdfReader(file)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() if page.extract_text() else ""
     return text
 
-def extract_text_from_word(file_path):
-    doc = Document(file_path)
-    return "\n".join([paragraph.text for paragraph in doc.paragraphs])
+# Function to extract text from Word
+def extract_text_from_word(file):
+    doc = Document(file)
+    text = ""
+    for paragraph in doc.paragraphs:
+        text += paragraph.text + "\n"
+    return text
 
-def extract_text_from_ppt(file_path):
-    prs = Presentation(file_path)
+# Function to extract text from PPT
+def extract_text_from_ppt(file):
+    prs = Presentation(file)
     text = ""
     for slide in prs.slides:
         for shape in slide.shapes:
@@ -29,60 +46,76 @@ def extract_text_from_ppt(file_path):
                 text += shape.text + "\n"
     return text
 
-# Summarization function
-summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+# Function to summarize text
+@st.cache_resource
+def load_summarizer():
+    return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 def summarize_text(text, max_length=500):
+    summarizer = load_summarizer()
     summary = summarizer(text, max_length=max_length, min_length=30, do_sample=False)
     return summary[0]["summary_text"]
 
-# Text breakdown into key phrases
+# Function to break down text into key phrases
 def break_down_text(text):
-    import re
-    sentences = re.split(r'[.!?]', text)
-    return [sentence.strip() for sentence in sentences if sentence.strip()]
+    sentences = re.split(r"[.!?]", text)
+    key_phrases = [sentence.strip() for sentence in sentences if sentence.strip()]
+    return key_phrases
 
-# Stable Diffusion model setup
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to("cuda")
+# Stable Diffusion model loading
+@st.cache_resource
+def load_diffusion_pipeline():
+    pipe = DiffusionPipeline.from_pretrained(
+        "CompVis/stable-diffusion-v1-4",
+        torch_dtype="auto",
+    )
+    return pipe.to("cpu")  # Use CPU for compatibility with Streamlit
 
-def generate_image_from_text(prompt):
-    image = pipe(prompt).images[0]
-    filename = f"{prompt[:10]}.png"
-    image.save(filename)
+# Function to generate image from text
+def generate_image_from_text(prompt, pipeline):
+    result = pipeline(prompt).images[0]
+    filename = f"{prompt[:10].replace(' ', '_')}.png"
+    result.save(filename)
     return filename
 
-# Streamlit app
-st.title("📝🤓ExplainAI👽")
-st.write("Upload a file and visualize its content as summarized text and images.")
+# Processing the uploaded file
+if uploaded_file is not None:
+    st.write(f"Processing {uploaded_file.name}...")
 
-uploaded_file = st.file_uploader("Upload your file (PDF, Word, or PPT)", type=["pdf", "docx", "pptx"])
-
-if uploaded_file:
-    file_type = uploaded_file.name.split('.')[-1]
-    if file_type == "pdf":
+    # Extract text based on file type
+    if file_extension == "pdf":
         extracted_text = extract_text_from_pdf(uploaded_file)
-    elif file_type == "docx":
+    elif file_extension == "docx":
         extracted_text = extract_text_from_word(uploaded_file)
-    elif file_type == "pptx":
+    elif file_extension == "pptx":
         extracted_text = extract_text_from_ppt(uploaded_file)
     else:
-        st.error("Unsupported file type.")
+        st.error("Unsupported file format!")
+        st.stop()
 
+    # Display extracted text
     st.subheader("Extracted Text")
     st.write(extracted_text)
 
+    # Summarize the text
     summarized_text = summarize_text(extracted_text)
     st.subheader("Summarized Text")
     st.write(summarized_text)
 
+    # Generate key phrases
     key_phrases = break_down_text(summarized_text)
     st.subheader("Key Phrases")
     st.write(key_phrases)
 
+    # Load Stable Diffusion pipeline
+    diffusion_pipeline = load_diffusion_pipeline()
+
+    # Generate images for each key phrase
     st.subheader("Generated Images")
     for phrase in key_phrases:
         try:
-            filename = generate_image_from_text(phrase)
-            st.image(filename, caption=phrase)
+            st.write(f"Generating image for: '{phrase}'")
+            image_path = generate_image_from_text(phrase, diffusion_pipeline)
+            st.image(Image.open(image_path), caption=phrase, use_column_width=True)
         except Exception as e:
             st.error(f"Error generating image for '{phrase}': {e}")
