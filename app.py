@@ -9,7 +9,8 @@ from docx import Document
 from pptx import Presentation
 
 # Title of the app
-st.title(" ExplainAI: Transforming ")
+st.title(" 📝🤓ExplainAI👽: Transforming Learning with AI ")
+st.write("Upload a file and visualize its content as summarized text and images.")
 
 # Sidebar instructions
 st.sidebar.header("Upload Files")
