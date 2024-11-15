@@ -1,8 +1,8 @@
 streamlit
+diffusers
+transformers
+torch
+Pillow
 PyPDF2
 python-docx
 python-pptx
-transformers
-diffusers
-torch
-Pillow
