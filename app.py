@@ -1,155 +1,104 @@
-import os
-import re
-from io import BytesIO
-from PIL import Image
-import streamlit as st
-from diffusers import StableDiffusionPipeline
-import torch
-from transformers import pipeline
-from pptx import Presentation
-from docx import Document
-import PyPDF2
+# app.py
 
+import streamlit as st
+import os
+from PyPDF2 import PdfReader
+from docx import Document
+from pptx import Presentation
+from transformers import pipeline
+from graphviz import Digraph
+from PIL import Image
+
+# Initialize the summarization pipeline
+@st.cache_resource
+def load_summarizer():
+    return pipeline("summarization", model="facebook/bart-large-cnn")
+
+summarizer = load_summarizer()
 
 # Function to extract text from PDF
 def extract_text_from_pdf(file_path):
-    try:
-        with open(file_path, "rb") as file:
-            reader = PyPDF2.PdfReader(file)
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() if page.extract_text() else ""
-        return text
-    except Exception as e:
-        st.error(f"Error extracting text from PDF: {e}")
-        return ""
+    reader = PdfReader(file_path)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() or ""
+    return text
 
-
-# Function to extract text from Word file
+# Function to extract text from Word document
 def extract_text_from_word(file_path):
-    try:
-        doc = Document(file_path)
-        text = ""
-        for paragraph in doc.paragraphs:
-            text += paragraph.text + "\n"
-        return text
-    except Exception as e:
-        st.error(f"Error extracting text from Word file: {e}")
-        return ""
+    doc = Document(file_path)
+    return "\n".join([para.text for para in doc.paragraphs])
 
-
-# Function to extract text from PPT file
+# Function to extract text from PPT
 def extract_text_from_ppt(file_path):
-    try:
-        prs = Presentation(file_path)
-        text = ""
-        for slide in prs.slides:
-            for shape in slide.shapes:
-                if hasattr(shape, "text"):
-                    text += shape.text + "\n"
-        return text
-    except Exception as e:
-        st.error(f"Error extracting text from PPT file: {e}")
-        return ""
+    prs = Presentation(file_path)
+    text = ""
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                text += shape.text + "\n"
+    return text
 
+# General function to handle extraction
+def extract_text(file_path):
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".pdf":
+        return extract_text_from_pdf(file_path)
+    elif ext == ".docx":
+        return extract_text_from_word(file_path)
+    elif ext == ".pptx":
+        return extract_text_from_ppt(file_path)
+    else:
+        return "Unsupported file format."
 
-# Function to summarize text using Hugging Face pipeline
-@st.cache_resource
-def load_summarizer():
-    return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+# Function for summarization
+def summarize_text(text, chunk_size=1000, max_length=150, min_length=50):
+    chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+    summary = ""
+    for chunk in chunks:
+        summarized = summarizer(chunk, max_length=max_length, min_length=min_length, do_sample=False)
+        summary += summarized[0]['summary_text'] + " "
+    return summary.strip()
 
+# Function to create a flowchart
+def create_flowchart(summarized_text, output_file="flowchart"):
+    points = summarized_text.split('. ')
+    dot = Digraph(comment="Visual Representation", format='png')
+    for i, point in enumerate(points):
+        if point.strip():
+            dot.node(f'Node{i}', point.strip(), shape='box', style='filled', color='lightblue')
+            if i > 0:
+                dot.edge(f'Node{i-1}', f'Node{i}')
+    dot.render(output_file, cleanup=True)
+    return f"{output_file}.png"
 
-def summarize_text(text, max_length=500):
-    summarizer = load_summarizer()
-    try:
-        summary = summarizer(text, max_length=max_length, min_length=30, do_sample=False)
-        return summary[0]["summary_text"]
-    except Exception as e:
-        st.error(f"Error summarizing text: {e}")
-        return ""
+# Streamlit UI
+st.title("📚 ExplainAI: Transforming Learning With AI")
 
-
-# Function to split text into key phrases
-def break_down_text(text):
-    sentences = re.split(r"[.!?]", text)
-    key_phrases = [sentence.strip() for sentence in sentences if sentence.strip()]
-    return key_phrases
-
-
-# Load Stable Diffusion model
-@st.cache_resource
-def load_stable_diffusion():
-    try:
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
-        )
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        pipe = pipe.to(device)
-        return pipe
-    except Exception as e:
-        st.error(f"Error loading Stable Diffusion model: {e}")
-        return None
-
-
-# Function to generate images from text
-def generate_image_from_text(pipe, prompt):
-    if not prompt.strip():
-        return None, "Prompt is empty or invalid."
-    try:
-        image = pipe(prompt).images[0]
-        return image, None
-    except Exception as e:
-        return None, f"Error generating image for '{prompt}': {e}"
-
-
-# Streamlit App
-st.title(" 📝🤓ExplainAI👽: Transforming Learning with AI ")
-st.write("Upload a file and visualize its content as summarized text and images.")
-
-uploaded_file = st.file_uploader("Upload a PDF, Word, or PPT file", type=["pdf", "docx", "pptx"])
+# File upload
+uploaded_file = st.file_uploader("Upload a file (PDF, DOCX, PPTX)", type=["pdf", "docx", "pptx"])
 
 if uploaded_file:
-    # Extract text based on file type
-    file_extension = uploaded_file.name.split(".")[-1].lower()
-    if file_extension == "pdf":
-        text = extract_text_from_pdf(uploaded_file)
-    elif file_extension == "docx":
-        text = extract_text_from_word(uploaded_file)
-    elif file_extension == "pptx":
-        text = extract_text_from_ppt(uploaded_file)
-    else:
-        st.error("Unsupported file type.")
-        text = ""
+    # Save the uploaded file temporarily
+    file_path = os.path.join("temp", uploaded_file.name)
+    os.makedirs("temp", exist_ok=True)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getvalue())
 
-    if text:
-        st.subheader("Extracted Text")
-        st.write(text)
+    # Extract text
+    st.subheader("🔍 Extracting Text...")
+    extracted_text = extract_text(file_path)
+    st.text_area("Extracted Text:", extracted_text, height=300)
 
-        # Summarize text
-        summarized_text = summarize_text(text)
-        if summarized_text:
-            st.subheader("Summarized Text")
-            st.write(summarized_text)
+    # Summarize text
+    st.subheader("✍️ Summarizing Text...")
+    summarized_text = summarize_text(extracted_text)
+    st.text_area("Summarized Text:", summarized_text, height=200)
 
-            # Extract key phrases
-            key_phrases = break_down_text(summarized_text)
-            if key_phrases:
-                st.subheader("Key Phrases")
-                st.write(key_phrases)
+    # Generate flowchart
+    st.subheader("🖼️ Generating Flowchart...")
+    flowchart_path = create_flowchart(summarized_text, output_file="flowchart")
+    st.image(flowchart_path, caption="Generated Flowchart", use_column_width=True)
 
-                # Generate images
-                st.subheader("Generated Images")
-                stable_diffusion_pipe = load_stable_diffusion()
-                if stable_diffusion_pipe:
-                    for phrase in key_phrases:
-                        image, error = generate_image_from_text(stable_diffusion_pipe, phrase)
-                        if error:
-                            st.error(error)
-                        else:
-                            st.image(image, caption=phrase)
-            else:
-                st.warning("No key phrases extracted.")
-        else:
-            st.warning("Text summarization failed.")
-    else:
-        st.warning("No text extracted from the uploaded file.")
+    # Clean up
+    os.remove(file_path)
