@@ -73,7 +73,7 @@ def create_flowchart(summarized_text, output_file="flowchart"):
     return f"{output_file}.png"
 
 # Streamlit UI
-st.title("📚 ExplainAI: Transforming Learning With AI")
+st.title("📝🤓ExplainAI👽: Transforming Learning With AI")
 
 # File upload
 uploaded_file = st.file_uploader("Upload a file (PDF, DOCX, PPTX)", type=["pdf", "docx", "pptx"])
