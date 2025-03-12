@@ -2,7 +2,7 @@ import streamlit as st
 import fitz  # PyMuPDF for PDF processing
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import CohereEmbeddings
+from langchain_cohere import CohereEmbeddings
 from langchain_community.llms import Cohere
 from langchain.chains import RetrievalQA
 import os
@@ -45,7 +45,7 @@ if uploaded_file is not None:
         st.error("⚠️ Cohere API key is missing! Please add it to your environment variables in Streamlit Cloud.")
     else:
         # Initialize FAISS and Cohere Embeddings
-        embeddings = CohereEmbeddings(cohere_api_key=cohere_api_key)
+        embeddings = CohereEmbeddings(model="embed-english-v3.0", cohere_api_key=cohere_api_key)
         vector_store = FAISS.from_texts(text_chunks, embeddings)
         retriever = vector_store.as_retriever(search_kwargs={"k": 5})
 
