@@ -13,6 +13,9 @@ import graphviz
 # Load environment variables
 load_dotenv()
 
+# Download the model if not present
+os.system("python -m spacy download en_core_web_sm")
+
 # Load spaCy model for key phrase extraction
 nlp = spacy.load("en_core_web_sm")
 
