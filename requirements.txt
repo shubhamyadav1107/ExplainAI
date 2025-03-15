@@ -9,3 +9,4 @@ cohere
 python-dotenv
 requests
 langchain-cohere
+spacy
