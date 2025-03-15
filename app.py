@@ -26,76 +26,84 @@ st.write("Drop your document, get an AI-generated summary, ask questions, and vi
 
 # Function to extract text from PDF
 def extract_text_from_pdf(pdf_path):
-    text = ""
-    doc = fitz.open(pdf_path)
-    for page in doc:
-        text += page.get_text("text") + "\n"
-    return text
+    try:
+        text = ""
+        doc = fitz.open(pdf_path)
+        for page in doc:
+            text += page.get_text("text") + "\n"
+        return text.strip()
+    except Exception as e:
+        st.error(f"❌ Error extracting text: {e}")
+        return None
 
 # Function to extract key phrases
 def extract_key_phrases(text):
     doc = nlp(text)
-    key_phrases = [chunk.text for chunk in doc.noun_chunks]  # Extract noun phrases
-    return key_phrases
+    return [chunk.text for chunk in doc.noun_chunks] if doc else []
 
-# Function to generate flowchart using Graphviz
+# Function to generate flowchart
 def generate_flowchart(key_phrases):
     dot = graphviz.Digraph()
-    
     for i, phrase in enumerate(key_phrases):
-        dot.node(str(i), phrase)  # Create node for each key phrase
-    
+        dot.node(str(i), phrase)
     for i in range(len(key_phrases) - 1):
-        dot.edge(str(i), str(i + 1))  # Connect nodes sequentially
-    
+        dot.edge(str(i), str(i + 1))
     return dot
 
 # File uploader
-uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+uploaded_file = st.file_uploader("📂 Upload a PDF file", type=["pdf"])
 
 if uploaded_file is not None:
-    # Save uploaded file as temp.pdf
-    temp_path = "temp.pdf"
-    with open(temp_path, "wb") as f:
-        f.write(uploaded_file.read())
+    st.success("✅ File uploaded successfully!")
+    
+    # Step 1: Extract text from PDF
+    if st.button("📄 Extract Text"):
+        temp_path = "temp.pdf"
+        with open(temp_path, "wb") as f:
+            f.write(uploaded_file.read())
 
-    # Extract text from PDF
-    extracted_text = extract_text_from_pdf(temp_path)
+        extracted_text = extract_text_from_pdf(temp_path)
+        
+        if extracted_text:
+            st.text_area("📃 Extracted Text:", extracted_text, height=300)
+        else:
+            st.error("❌ Failed to extract text. Please try another document.")
+    
+    # Step 2: Extract Key Phrases
+    if extracted_text and st.button("🔍 Extract Key Phrases"):
+        key_phrases = extract_key_phrases(extracted_text)
+        if key_phrases:
+            st.subheader("📌 Key Phrases Extracted:")
+            st.write(key_phrases)
+        else:
+            st.error("❌ No key phrases found.")
 
-    # Extract key phrases
-    key_phrases = extract_key_phrases(extracted_text)
-
-    # Display key phrases
-    st.subheader("📌 Key Phrases Extracted:")
-    st.write(key_phrases)
-
-    # Generate and display flowchart
-    if st.button("Generate Flowchart"):
+    # Step 3: Generate Flowchart
+    if key_phrases and st.button("📊 Generate Flowchart"):
         flowchart = generate_flowchart(key_phrases)
         st.graphviz_chart(flowchart)
 
-    # Split text into chunks for retrieval-based QA
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    text_chunks = text_splitter.split_text(extracted_text)
-
-    # Ensure API key is available
+    # Step 4: Setup QA Model
     cohere_api_key = os.getenv("COHERE_API_KEY")
     if not cohere_api_key:
-        st.error("⚠️ Cohere API key is missing! Please add it to your environment variables in Streamlit Cloud.")
+        st.error("⚠️ Cohere API key is missing! Please add it to your environment variables.")
     else:
-        # Initialize FAISS and Cohere Embeddings
-        embeddings = CohereEmbeddings(model="embed-english-v3.0", cohere_api_key=cohere_api_key)
-        vector_store = FAISS.from_texts(text_chunks, embeddings)
-        retriever = vector_store.as_retriever(search_kwargs={"k": 5})
+        if st.button("🤖 Setup AI Q&A"):
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            text_chunks = text_splitter.split_text(extracted_text)
 
-        # Initialize Cohere model
-        llm = Cohere(model="command", cohere_api_key=cohere_api_key, temperature=0)
-        qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
+            embeddings = CohereEmbeddings(model="embed-english-v3.0", cohere_api_key=cohere_api_key)
+            vector_store = FAISS.from_texts(text_chunks, embeddings)
+            retriever = vector_store.as_retriever(search_kwargs={"k": 5})
 
-        # User input for questions
-        user_query = st.text_input("Ask a question about the document:")
+            llm = Cohere(model="command", cohere_api_key=cohere_api_key, temperature=0)
+            qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
 
-        if user_query:
-            response = qa_chain.run(user_query)
-            st.write("### 🤖 Answer:")
-            st.write(response)
+            st.success("✅ AI Q&A model is ready!")
+
+            # Step 5: Ask Questions
+            user_query = st.text_input("📝 Ask a question about the document:")
+            if user_query:
+                response = qa_chain.run(user_query)
+                st.write("### 🤖 Answer:")
+                st.write(response)
