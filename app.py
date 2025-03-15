@@ -7,14 +7,45 @@ from langchain_community.llms import Cohere
 from langchain.chains import RetrievalQA
 import os
 from dotenv import load_dotenv
+import spacy
+import graphviz
 
 # Load environment variables
 load_dotenv()
+
+# Load spaCy model for key phrase extraction
+nlp = spacy.load("en_core_web_sm")
 
 # Streamlit UI
 st.set_page_config(page_title="📝🤓ExplainAI👽: Transforming Learning With AI", layout="wide")
 st.title("📝🤓ExplainAI👽: Transforming Learning With AI")
 st.write("Drop your document, get an AI-generated summary, ask questions, and visualize key insights!")
+
+# Function to extract text from PDF
+def extract_text_from_pdf(pdf_path):
+    text = ""
+    doc = fitz.open(pdf_path)
+    for page in doc:
+        text += page.get_text("text") + "\n"
+    return text
+
+# Function to extract key phrases
+def extract_key_phrases(text):
+    doc = nlp(text)
+    key_phrases = [chunk.text for chunk in doc.noun_chunks]  # Extract noun phrases
+    return key_phrases
+
+# Function to generate flowchart using Graphviz
+def generate_flowchart(key_phrases):
+    dot = graphviz.Digraph()
+    
+    for i, phrase in enumerate(key_phrases):
+        dot.node(str(i), phrase)  # Create node for each key phrase
+    
+    for i in range(len(key_phrases) - 1):
+        dot.edge(str(i), str(i + 1))  # Connect nodes sequentially
+    
+    return dot
 
 # File uploader
 uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
@@ -26,16 +57,21 @@ if uploaded_file is not None:
         f.write(uploaded_file.read())
 
     # Extract text from PDF
-    def extract_text_from_pdf(pdf_path):
-        text = ""
-        doc = fitz.open(pdf_path)
-        for page in doc:
-            text += page.get_text("text") + "\n"
-        return text
-
     extracted_text = extract_text_from_pdf(temp_path)
 
-    # Split text into chunks
+    # Extract key phrases
+    key_phrases = extract_key_phrases(extracted_text)
+
+    # Display key phrases
+    st.subheader("📌 Key Phrases Extracted:")
+    st.write(key_phrases)
+
+    # Generate and display flowchart
+    if st.button("Generate Flowchart"):
+        flowchart = generate_flowchart(key_phrases)
+        st.graphviz_chart(flowchart)
+
+    # Split text into chunks for retrieval-based QA
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     text_chunks = text_splitter.split_text(extracted_text)
 
