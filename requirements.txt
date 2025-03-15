@@ -1,12 +1,10 @@
 streamlit
 PyMuPDF
-python-docx
 langchain
 langchain-community
 faiss-cpu
 graphviz
 cohere
 python-dotenv
-requests
 langchain-cohere
 spacy
