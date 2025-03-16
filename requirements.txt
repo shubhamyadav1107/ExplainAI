@@ -1,5 +1,5 @@
 streamlit
-PyMuPDF
+pymupdf
 langchain
 langchain-community
 faiss-cpu
