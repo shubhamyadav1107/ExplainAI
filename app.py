@@ -19,6 +19,10 @@ os.system("python -m spacy download en_core_web_sm")
 # Load spaCy model for key phrase extraction
 nlp = spacy.load("en_core_web_sm")
 
+# Initialize session state for key phrases
+if "key_phrases" not in st.session_state:
+    st.session_state["key_phrases"] = []
+
 # Streamlit UI
 st.set_page_config(page_title="📝🤓ExplainAI👽: Transforming Learning With AI", layout="wide")
 st.title("📝🤓ExplainAI👽: Transforming Learning With AI")
@@ -65,22 +69,24 @@ if uploaded_file is not None:
         extracted_text = extract_text_from_pdf(temp_path)
         
         if extracted_text:
+            st.session_state["extracted_text"] = extracted_text  # Store extracted text in session
             st.text_area("📃 Extracted Text:", extracted_text, height=300)
         else:
             st.error("❌ Failed to extract text. Please try another document.")
     
     # Step 2: Extract Key Phrases
-    if extracted_text and st.button("🔍 Extract Key Phrases"):
-        key_phrases = extract_key_phrases(extracted_text)
-        if key_phrases:
+    if "extracted_text" in st.session_state and st.button("🔍 Extract Key Phrases"):
+        st.session_state["key_phrases"] = extract_key_phrases(st.session_state["extracted_text"])
+        
+        if st.session_state["key_phrases"]:
             st.subheader("📌 Key Phrases Extracted:")
-            st.write(key_phrases)
+            st.write(st.session_state["key_phrases"])
         else:
             st.error("❌ No key phrases found.")
 
     # Step 3: Generate Flowchart
-    if key_phrases and st.button("📊 Generate Flowchart"):
-        flowchart = generate_flowchart(key_phrases)
+    if st.session_state["key_phrases"] and st.button("📊 Generate Flowchart"):
+        flowchart = generate_flowchart(st.session_state["key_phrases"])
         st.graphviz_chart(flowchart)
 
     # Step 4: Setup QA Model
@@ -88,9 +94,9 @@ if uploaded_file is not None:
     if not cohere_api_key:
         st.error("⚠️ Cohere API key is missing! Please add it to your environment variables.")
     else:
-        if st.button("🤖 Setup AI Q&A"):
+        if "extracted_text" in st.session_state and st.button("🤖 Setup AI Q&A"):
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-            text_chunks = text_splitter.split_text(extracted_text)
+            text_chunks = text_splitter.split_text(st.session_state["extracted_text"])
 
             embeddings = CohereEmbeddings(model="embed-english-v3.0", cohere_api_key=cohere_api_key)
             vector_store = FAISS.from_texts(text_chunks, embeddings)
@@ -99,11 +105,13 @@ if uploaded_file is not None:
             llm = Cohere(model="command", cohere_api_key=cohere_api_key, temperature=0)
             qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
 
+            st.session_state["qa_chain"] = qa_chain  # Store QA model in session state
             st.success("✅ AI Q&A model is ready!")
 
-            # Step 5: Ask Questions
-            user_query = st.text_input("📝 Ask a question about the document:")
-            if user_query:
-                response = qa_chain.run(user_query)
-                st.write("### 🤖 Answer:")
-                st.write(response)
+    # Step 5: Ask Questions
+    if "qa_chain" in st.session_state:
+        user_query = st.text_input("📝 Ask a question about the document:")
+        if user_query:
+            response = st.session_state["qa_chain"].run(user_query)
+            st.write("### 🤖 Answer:")
+            st.write(response)
